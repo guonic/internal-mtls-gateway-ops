@@ -28,5 +28,41 @@
 ## 快速开始
 ### 1. 克隆仓库（含子模块）
 ```bash
-git clone --recurse-submodules https://github.com/guonic/gateway-mtls-ops.git
-cd gateway-mtls-ops
+# 初始化
+./manage_certs.sh init
+
+# 签发服务端证书（修改 openssl.cnf 中的 [alt_names] 为你的真实域名后再执行）
+./manage_certs.sh server example.com
+
+# 签发客户端证书：
+./manage_certs.sh client my-browser
+
+# 此时会生成 my-ca/client/my-browser.p12，将其导入 Chrome/Edge/Firefox。
+
+# 在 Nginx 配置文件中加入：
+server {
+    listen 443 ssl;
+    server_name example.com;
+
+    # 服务端证书 (给浏览器看的)
+    ssl_certificate      /path/to/my-ca/certs/server.cert.pem;
+    ssl_certificate_key  /path/to/my-ca/private/server.key.pem;
+
+    # 客户端校验配置 (mTLS核心)
+    ssl_verify_client on;
+    ssl_client_certificate /path/to/my-ca/certs/ca.cert.pem; # 用来验证客户端的根
+
+    # 吊销列表 (可选，如果启用了吊销功能)
+    # ssl_crl /path/to/my-ca/crl/ca.crl.pem;
+
+    location / {
+        root html;
+    }
+}
+
+# 吊销证书
+查看 index.txt，第一列为 V (Valid) 表示有效，R (Revoked) 表示已吊销。找到对应的十六进制序列号。
+执行吊销（假设序列号为 1001）：
+
+./manage_certs.sh revoke 1001
+注意：吊销后，必须重新开启 Nginx 中 ssl_crl 的注释，并指向生成的 ca.crl.pem 文件。每次吊销新证书后，都需要执行 revoke 命令同步更新 CRL 文件。
